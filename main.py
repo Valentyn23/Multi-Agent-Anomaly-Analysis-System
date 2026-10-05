@@ -1,35 +1,43 @@
 """Головна точка входу мультиагентної системи аналізу аномалій.
 
-На поточному етапі виконує перевірку завантаження конфігурації та готовності середовища.
+Виконує завантаження конфігурації та комплексну діагностику доступності
+всіх інфраструктурних сервісів (PostgreSQL, Neo4j, Redis).
 """
 
+import sys
+
 from src.config import settings
+from src.database import check_infrastructure_health, close_all_infrastructure_connections
 
 
-def main() -> None:
-    """Виводить безпечну діагностичну інформацію про завантажені налаштування."""
+def main() -> int:
+    """Виконує запуск діагностики та відображає стан готовності інфраструктури."""
     print("=" * 70)
     print(f" {settings.APP_NAME}")
     print("=" * 70)
-    print("Конфігурацію успішно завантажено.\n")
+    print("Конфігурація: OK\n")
 
-    summary = settings.get_sanitized_summary()
-    print(f"Середовище:    {summary['environment']}")
-    print(f"PostgreSQL:     {settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}")
-    print(f"Neo4j Bolt:     {settings.NEO4J_HOST}:{settings.NEO4J_BOLT_PORT}")
-    print(f"Neo4j HTTP:     {settings.NEO4J_HOST}:{settings.NEO4J_HTTP_PORT}")
-    print(f"Redis:          {settings.REDIS_HOST}:{settings.REDIS_PORT}")
-    print("\nПеревірка згенерованих URI з'єднань (паролі приховано):")
-    print(
-        f" - PostgreSQL DSN: postgresql://{settings.POSTGRES_USER}:****@"
-        f"{settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}"
-    )
-    print(f" - Neo4j Bolt URL: {settings.neo4j_bolt_url}")
-    print(f" - Redis URL:      redis://:****@{settings.REDIS_HOST}:{settings.REDIS_PORT}/0")
+    print("Стан інфраструктури:")
+    health = check_infrastructure_health()
+
+    for name, srv in health.services.items():
+        if srv.is_available:
+            print(f"  {name:<12}: OK ({srv.latency_ms:.2f} мс)")
+        else:
+            print(f"  {name:<12}: ПОМИЛКА -> {srv.details}")
+
+    print()
+    if health.all_available:
+        print("Усі інфраструктурні сервіси доступні.")
+        exit_code = 0
+    else:
+        print("УВАГА: Деякі сервіси інфраструктури недоступні!")
+        exit_code = 1
+
     print("=" * 70)
-    print("Конфігурація валідна та готова до наступних етапів системи.")
-    print("=" * 70)
+    close_all_infrastructure_connections()
+    return exit_code
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

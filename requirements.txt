@@ -3,5 +3,11 @@ pydantic>=2.10.0
 pydantic-settings>=2.7.0
 python-dotenv>=1.0.0
 
+# Клієнти баз даних та ORM для шару інфраструктури
+SQLAlchemy>=2.0.0
+psycopg[binary]>=3.1.0
+neo4j>=5.0.0
+redis>=5.0.0
+
 # Фреймворк для тестування
 pytest>=8.0.0
