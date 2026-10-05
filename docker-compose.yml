@@ -1,0 +1,108 @@
+services:
+  # ----------------------------------------------------------------------------
+  # PostgreSQL: Primary Relational Data Store (ACID, Entities, Features, Alerts)
+  # ----------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: anomaly_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-prozorro_anomaly_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres_secure_pass_2026}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-prozorro_anomaly_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - anomaly_network
+
+  # ----------------------------------------------------------------------------
+  # Neo4j: Graph Database for Network Topology & GDS Feature Extraction
+  # ----------------------------------------------------------------------------
+  neo4j:
+    image: neo4j:5.26.0-community
+    container_name: anomaly_neo4j
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-neo4j_secure_pass_2026}
+      # Automatically install APOC and Graph Data Science (GDS) libraries
+      NEO4J_PLUGINS: '["graph-data-science", "apoc"]'
+      NEO4J_dbms_security_procedures_unrestricted: "gds.*,apoc.*"
+      NEO4J_dbms_security_procedures_allowlist: "gds.*,apoc.*"
+      # JVM & Cache Memory Tuning
+      NEO4J_server_memory_heap_initial__size: ${NEO4J_HEAP_INITIAL_SIZE:-512m}
+      NEO4J_server_memory_heap_max__size: ${NEO4J_HEAP_MAX_SIZE:-2G}
+      NEO4J_server_memory_pagecache_size: ${NEO4J_PAGECACHE_SIZE:-1G}
+    ports:
+      - "${NEO4J_HTTP_PORT:-7474}:7474" # Web Browser UI
+      - "${NEO4J_BOLT_PORT:-7687}:7687" # Bolt binary protocol
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+      - neo4j_plugins:/plugins
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:7474 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - anomaly_network
+
+  # ----------------------------------------------------------------------------
+  # Redis: In-Memory Message Broker for Celery & Query Result Caching
+  # ----------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: anomaly_redis
+    restart: unless-stopped
+    command: >
+      sh -c 'if [ -n "$$REDIS_PASSWORD" ]; then
+        redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD";
+      else
+        redis-server --appendonly yes;
+      fi'
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_secure_pass_2026}
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - anomaly_network
+
+# ------------------------------------------------------------------------------
+# Persistent Named Volumes
+# ------------------------------------------------------------------------------
+volumes:
+  postgres_data:
+    name: anomaly_postgres_data
+  neo4j_data:
+    name: anomaly_neo4j_data
+  neo4j_logs:
+    name: anomaly_neo4j_logs
+  neo4j_plugins:
+    name: anomaly_neo4j_plugins
+  redis_data:
+    name: anomaly_redis_data
+
+# ------------------------------------------------------------------------------
+# Isolated Bridge Network
+# ------------------------------------------------------------------------------
+networks:
+  anomaly_network:
+    name: anomaly_network
+    driver: bridge
